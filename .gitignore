@@ -1,0 +1,23 @@
+# 原始数据集不入库 (train.txt 12.7GB, 超过 GitHub 100MB 限制)
+datasets/
+!samples/
+
+# 预处理产出的二进制文件与训练产物
+data_cache/
+checkpoints/
+outputs/
+*.bin
+*.npy
+*.pt
+
+# 分词器为训练产物, 不入库 (训练方法见 README)
+tokenizer/tokenizer.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.idea/
+.vscode/
+*.log

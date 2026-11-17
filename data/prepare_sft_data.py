@@ -20,6 +20,7 @@ import sys
 import time
 
 import numpy as np
+from tqdm import tqdm
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import TOKENIZER_PATH, BASE_DIR  # noqa: E402
@@ -88,9 +89,18 @@ def main():
             lengths.append(len(ids))
             counters["kept"] += 1
 
-    with open(args.input, "r", encoding="utf-8") as f:
-        for i, line in enumerate(f):
-            line = line.strip()
+    # 按字节进度显示
+    file_size = os.path.getsize(args.input)
+    pbar = tqdm(total=file_size, unit="B", unit_scale=True, unit_divisor=1024,
+                desc="SFT 数据编码", dynamic_ncols=True)
+    with open(args.input, "rb") as f:
+        for i, raw in enumerate(f):
+            pbar.update(len(raw))
+            try:
+                line = raw.decode("utf-8").strip()
+            except UnicodeDecodeError:
+                counters["drop"] += 1
+                continue
             if not line:
                 continue
             try:
@@ -106,11 +116,12 @@ def main():
             if len(batch) >= 1024:
                 flush(batch)
                 batch = []
-            if (i + 1) % 50000 == 0:
-                print(f"  已处理 {i + 1:,} 行 ({(i + 1) / max(time.time() - t0, 1e-9):.0f} 行/s)")
+                pbar.set_postfix(kept=counters["kept"], dropped=counters["drop"])
             if args.max_lines and (i + 1) >= args.max_lines:
+                tqdm.write(f"达到 --max_lines={args.max_lines}, 提前结束")
                 break
     flush(batch)
+    pbar.close()
 
     tokens_f.close()
     mask_f.close()

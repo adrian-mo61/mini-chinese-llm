@@ -44,9 +44,9 @@ Llama/Qwen 风格的 decoder-only Transformer：
 
 ### 一键训练（Ubuntu / 云 GPU）
 
-`run_all.sh` 依次完成：环境准备（venv + 依赖）→ BBPE 分词器训练 → 数据转 .bin →
-预训练 → SFT，并在各阶段间自动跳过已完成步骤（checkpoint 存在时自动断点续训，
-适合抢占式云实例）。日志写入 `logs/`。
+`run_all.sh` 依次完成：依赖检查（直接使用当前 python3，仅缺依赖时才安装）→
+BBPE 分词器训练 → 数据转 .bin → 预训练 → SFT，并在各阶段间自动跳过已完成步骤
+（checkpoint 存在时自动断点续训，适合抢占式云实例）。日志写入 `logs/`。
 
 ```bash
 bash run_all.sh                      # 全量训练 (默认: 16384 词表 / 60000 步预训练 / 2 轮 SFT)
@@ -142,9 +142,9 @@ python generate.py --ckpt checkpoints/sft_best.pt --chat   # 交互模式
 一键脚本 `--data-dir samples` 跑通。单独调试某个阶段时：
 
 ```bash
-python tokenizer/train_tokenizer.py --input samples/train_sample.txt --sample_size 0
-python data/prepare_pretrain_data.py --input samples/train_sample.txt --val_fraction 0.1
-python data/prepare_sft_data.py --input samples/train_sample.jsonl
+python tokenizer/train_tokenizer.py --input samples/train.txt --sample_size 0
+python data/prepare_pretrain_data.py --input samples/train.txt --val_fraction 0.1
+python data/prepare_sft_data.py --input samples/train.jsonl
 python pretrain.py --batch_size 8 --max_steps 50 --eval_interval 25 --save_interval 50
 python sft.py --init_from checkpoints/pretrain_latest.pt --batch_size 8 --max_steps 30
 python generate.py --ckpt checkpoints/sft_best.pt --prompt "你好"

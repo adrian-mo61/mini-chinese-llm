@@ -10,10 +10,10 @@ CPU 冒烟测试:
 import argparse
 import os
 import sys
-import time
 
 import numpy as np
 import torch
+from tqdm import tqdm
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dataclasses import asdict  # noqa: E402
@@ -146,11 +146,11 @@ def main():
 
     save_model_cfg(cfg.out_dir, asdict(cfg.model))
     model.train()
-    t0 = time.time()
     best_val = float("inf")
     step = 0
     done = False
     epoch = 0
+    pbar = tqdm(total=total_steps, desc="sft", dynamic_ncols=True, unit="step")
     while not done:
         epoch += 1
         for _ in range(len(dataset.train_idx) // cfg.batch_size):
@@ -169,11 +169,8 @@ def main():
             optimizer.step()
 
             if step % cfg.log_interval == 0:
-                dt = time.time() - t0
-                print(f"epoch {epoch} step {step:>6d}/{total_steps} | "
-                      f"loss {accum_loss:.4f} | lr {lr:.2e} | "
-                      f"{cfg.log_interval / max(dt, 1e-9):.2f} step/s")
-                t0 = time.time()
+                pbar.set_postfix(loss=f"{accum_loss:.4f}", lr=f"{lr:.2e}", epoch=epoch)
+            pbar.update(1)
 
             if (step + 1) % cfg.eval_interval == 0 or step == total_steps - 1:
                 val_loss = eval_val(model, dataset, cfg, PAD_ID, device, cfg.batch_size,
@@ -194,6 +191,7 @@ def main():
             if step >= total_steps:
                 done = True
                 break
+    pbar.close()
 
     print("SFT 完成")
 

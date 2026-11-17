@@ -15,6 +15,7 @@ import sys
 import time
 
 import numpy as np
+from tqdm import tqdm
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import TOKENIZER_PATH, BASE_DIR  # noqa: E402
@@ -91,6 +92,7 @@ def main():
     val_writer = BinWriter(val_path)
 
     n_docs = 0
+    n_bad_lines = 0
     total_bytes = 0
     t0 = time.time()
     batch_texts = []
@@ -107,23 +109,33 @@ def main():
             writer.write(enc.ids + [eos_id])
         batch_texts = []
 
-    with open(args.input, "r", encoding="utf-8") as f:
-        for line in f:
-            text = line.strip()
+    # 按字节进度显示 (无需预先统计总行数, 12.7GB 文件也能精确显示 ETA)
+    file_size = os.path.getsize(args.input)
+    pbar = tqdm(total=file_size, unit="B", unit_scale=True, unit_divisor=1024,
+                desc="分词编码", dynamic_ncols=True)
+    with open(args.input, "rb") as f:
+        for raw in f:
+            pbar.update(len(raw))
+            total_bytes += len(raw)
+            try:
+                text = raw.decode("utf-8").strip()
+            except UnicodeDecodeError:
+                n_bad_lines += 1
+                continue
             if not text:
                 continue
             batch_texts.append(text)
             n_docs += 1
-            total_bytes += len(line.encode("utf-8"))
             if len(batch_texts) >= BATCH_DOCS:
                 flush_batch()
-            if n_docs % 500000 == 0:
-                speed = total_bytes / 1e6 / max(time.time() - t0, 1e-9)
-                print(f"  已处理 {n_docs:,} 篇文档 / {total_bytes / 1e9:.2f}GB ({speed:.1f} MB/s)")
+                pbar.set_postfix(docs=n_docs, tok=train_writer.n_tokens + val_writer.n_tokens)
             if args.max_bytes and total_bytes >= args.max_bytes:
-                print(f"达到 --max_bytes={args.max_bytes}, 提前结束")
+                tqdm.write(f"达到 --max_bytes={args.max_bytes}, 提前结束")
                 break
     flush_batch()
+    pbar.close()
+    if n_bad_lines:
+        print(f"跳过无法按 UTF-8 解码的行: {n_bad_lines}")
 
     train_writer.finalize()
     val_writer.finalize()

@@ -15,6 +15,7 @@ import time
 
 import numpy as np
 import torch
+from tqdm import tqdm
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dataclasses import asdict  # noqa: E402
@@ -126,10 +127,12 @@ def main():
 
     save_model_cfg(cfg.out_dir, asdict(cfg.model))
     model.train()
-    t0 = time.time()
     best_val = float("inf")
-    tokens_per_step = cfg.batch_size * cfg.model.max_seq_len
+    tokens_per_step = cfg.batch_size * cfg.model.max_seq_len * cfg.grad_accum_steps
+    window_t0, window_tokens = time.time(), 0
 
+    pbar = tqdm(total=cfg.max_steps, initial=start_step, desc="pretrain",
+                dynamic_ncols=True, unit="step")
     for step in range(start_step, cfg.max_steps):
         lr = get_lr(step, cfg.max_steps, cfg.lr, cfg.warmup_steps, cfg.min_lr_ratio)
         for g in optimizer.param_groups:
@@ -146,12 +149,13 @@ def main():
         torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
         optimizer.step()
 
+        window_tokens += tokens_per_step
         if step % cfg.log_interval == 0:
-            dt = time.time() - t0
-            tps = cfg.log_interval * tokens_per_step * cfg.grad_accum_steps / max(dt, 1e-9)
-            print(f"step {step:>6d}/{cfg.max_steps} | loss {accum_loss:.4f} | "
-                  f"lr {lr:.2e} | {tps / 1e6:.2f}M tokens/s")
-            t0 = time.time()
+            tps = window_tokens / max(time.time() - window_t0, 1e-9)
+            pbar.set_postfix(loss=f"{accum_loss:.4f}", lr=f"{lr:.2e}",
+                             tok_s=f"{tps / 1e6:.2f}M")
+            window_t0, window_tokens = time.time(), 0
+        pbar.update(1)
 
         if (step + 1) % cfg.eval_interval == 0 or step == cfg.max_steps - 1:
             val_loss = eval_val(model, val_data, cfg, device, cfg.batch_size)
@@ -167,6 +171,7 @@ def main():
                 model, asdict(cfg.model), step + 1, optimizer,
                 {"kind": "pretrain"},
             )
+    pbar.close()
 
     print("预训练完成")
 

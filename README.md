@@ -25,6 +25,7 @@ Llama/Qwen 风格的 decoder-only Transformer：
 ```
 ├── config.py                    # 模型/训练配置 (dataclass)
 ├── model.py                     # MiniChineseLLM: RoPE + RMSNorm + SwiGLU
+├── run_all.sh                   # 一键训练脚本 (Ubuntu/GPU: 分词器→.bin→预训练→SFT)
 ├── pretrain.py                  # 预训练 (从 .bin 采样训练窗口)
 ├── sft.py                       # SFT 微调 (ChatML 模板, 仅对回答计算损失)
 ├── generate.py                  # 对话生成 / 交互式聊天
@@ -41,7 +42,31 @@ Llama/Qwen 风格的 decoder-only Transformer：
 
 ## 快速开始
 
-### 0. 环境
+### 一键训练（Ubuntu / 云 GPU）
+
+`run_all.sh` 依次完成：环境准备（venv + 依赖）→ BBPE 分词器训练 → 数据转 .bin →
+预训练 → SFT，并在各阶段间自动跳过已完成步骤（checkpoint 存在时自动断点续训，
+适合抢占式云实例）。日志写入 `logs/`。
+
+```bash
+bash run_all.sh                      # 全量训练 (默认: 16384 词表 / 60000 步预训练 / 2 轮 SFT)
+bash run_all.sh --demo               # 训练结束后附带一次生成演示
+bash run_all.sh --force              # 忽略已有产物全部重跑
+bash run_all.sh --help               # 查看全部参数 (数据目录/步数/batch/学习率等均可覆盖)
+```
+
+小语料快速验证（几百 KB 数据 + 50 步训练，CPU 也能跑）：
+
+```bash
+bash run_all.sh --data-dir samples \
+    --tokenizer-sample-mb 0 --val-fraction 0.1 \
+    --pretrain-steps 50 --pretrain-batch-size 8 \
+    --sft-epochs 1 --save-interval 50 --demo
+```
+
+### 分步执行
+
+#### 0. 环境
 
 ```bash
 pip install -r requirements.txt
@@ -111,13 +136,14 @@ python generate.py --ckpt checkpoints/sft_best.pt --prompt "你好，介绍一�
 python generate.py --ckpt checkpoints/sft_best.pt --chat   # 交互模式
 ```
 
-## 用 samples/ 跑通全流程（无需大数据集）
+## 用 samples/ 单独跑各阶段（无需大数据集）
 
-仓库自带小样本数据（预训练语料前 200KB + SFT 前 500 条）：
+仓库自带小样本数据（预训练语料前 200KB + SFT 前 500 条），也可直接用上面的
+一键脚本 `--data-dir samples` 跑通。单独调试某个阶段时：
 
 ```bash
 python tokenizer/train_tokenizer.py --input samples/train_sample.txt --sample_size 0
-python data/prepare_pretrain_data.py --input samples/train_sample.txt
+python data/prepare_pretrain_data.py --input samples/train_sample.txt --val_fraction 0.1
 python data/prepare_sft_data.py --input samples/train_sample.jsonl
 python pretrain.py --batch_size 8 --max_steps 50 --eval_interval 25 --save_interval 50
 python sft.py --init_from checkpoints/pretrain_latest.pt --batch_size 8 --max_steps 30

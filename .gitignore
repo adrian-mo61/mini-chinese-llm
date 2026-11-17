@@ -6,6 +6,7 @@ datasets/
 data_cache/
 checkpoints/
 outputs/
+logs/
 *.bin
 *.npy
 *.pt
